@@ -1,62 +1,60 @@
-export interface IItem  {key: string, name: string, value: string, type: string}
+import { ICssCustomPropertiesParams, IItem } from "./params";
 
-const cssKeyToJsKey = (key: string) =>
-key.replace('--', '').replace(/-./g, (x) => x.toUpperCase()[1]);
+const getAllCSSVariableNames = (sheet: CSSStyleSheet, settings: ICssCustomPropertiesParams = {}) => {
+  const { filterProps = [], hiddenProps = [] } = settings;
+  if (!sheet || !sheet.cssRules) return [];
 
-const getAllCSSVariableNames = (styleSheets: StyleSheetList) => {
-  const cssVars: string[] = [];
+  const finalSet: Set<string> = new Set();
+  for (const rule of Array.from(sheet.cssRules).filter((rule: CSSRule) => rule.type === 1)) {
+    const props = rule.cssText?.match(/--[\w-]+/g);
+    if (!props) continue;
 
-  Array.from(styleSheets).forEach((styleSheet) => {
-    return Array.from(styleSheet.cssRules).forEach((rule: CSSStyleRule) => {
-      if (!rule || !rule['style']) {
-        return;
-      }
+    console.log({ props, filterProps, hiddenProps });
 
-      Array.from(rule['style']).forEach((style: string) => {
-        if (style.startsWith('--') && cssVars.indexOf(style) == -1) {
-          cssVars.push(style);
-        }
-      });
-    });
-  });
+    let filtered = props;
+    if (filterProps.length > 0) {
+      filtered.filter((p: string) => filterProps.some(f => p.match(f)));
+      console.log(filterProps, { filtered });
+    }
 
-  return cssVars;
-};
+    if (hiddenProps.length > 0) {
+      filtered.filter((p: string) => hiddenProps.some(h => !p.match(h)));
+      console.log(hiddenProps, { filtered });
+    }
 
-const getType = (value: string) => {
-  if (CSS.supports('color',value) ) {
-    return 'color'
+    filtered.forEach((f: string) => !finalSet.has(f) && finalSet.add(f));
   }
 
-  return 'text'
-}
+  return finalSet.size ? Array.from(finalSet) : [];
+};
 
-const getElementCSSVariables = (
+export const getElementCSSVariables = (
   allCSSVars: Array<string>,
-  element: HTMLElement = document.body,
-  pseudo: string | undefined = ''
-  ) => {
-    const elStyles = window.getComputedStyle(element, pseudo);
-    const cssVars: IItem[] = [];
+  elementStyles: CSSStyleDeclaration,
+) => {
+  return allCSSVars.reduce((acc: IItem[], key: string) => {
+    const value = elementStyles?.getPropertyValue(key)?.trim();
 
-    allCSSVars.forEach((key) => {
-      const value = elStyles.getPropertyValue(key);
-
-      if (value) {
-        cssVars.push({
-          key,
-          value: value.trim(),
-          name: cssKeyToJsKey(key),
-          type: getType(value)
-        })
-      }
+    acc.push({
+      key,
+      value,
+      name: key.replace('--', '').replace(/-./g, (x) => x?.toUpperCase()?.[1]),
+      type: CSS.supports('color', value) ? 'color' : 'text',
     });
 
-    return cssVars;
-  };
+    return acc;
+  }, []);
+};
 
-
-  export const getAllCSSVariables = (storyDocument: Document): IItem[] => {
-    const cssVars = getAllCSSVariableNames(storyDocument.styleSheets);
-    return getElementCSSVariables(cssVars, storyDocument.documentElement);
-  };
+export const getAllCSSVariables = (document: Document, settings: ICssCustomPropertiesParams = {}): IItem[] => {
+  if (!document) return [];
+  const cssVars = Array.from(document.styleSheets).reduce((acc: string[], sheet: CSSStyleSheet) => {
+    getAllCSSVariableNames(sheet, settings)
+      .forEach((v: string) => {
+        if (!acc.includes(v)) acc.push(v);
+      });
+    return acc;
+  }, []);
+  const elStyles = window.getComputedStyle(document.documentElement);
+  return getElementCSSVariables(cssVars, elStyles);
+};

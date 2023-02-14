@@ -1,54 +1,44 @@
-import React, { useState, useEffect } from "react";
-import { AddonPanel, ArgsTable } from "@storybook/components";
+import React, { useState, useMemo } from "react";
+
+import { AddonPanel } from "@storybook/components";
+import { useAddonState, useChannel, useParameter } from "@storybook/api";
+
 import { PanelContent } from "./components/PanelContent";
 import { getAllCSSVariables } from "./get-all-css-variables";
-import { ADDON_ID, PARAM_KEY } from "./constants";
-import { ICssCustomPropertiesParams } from "./params";
-import { useParameter } from "@storybook/api";
+import { ADDON_ID, EVENTS, PARAM_KEY } from "./constants";
 import { useLocalStorage } from "./use-local-storage";
 
-interface PanelProps {
-  active: boolean;
-}
-
-const setIframePreviewWhenReady = (setIframePreview: React.Dispatch<React.SetStateAction<HTMLIFrameElement>>) => {
-  const iframePreview = document.getElementById('storybook-preview-iframe') as HTMLIFrameElement
-
-  if (!iframePreview) {
-    setTimeout(() => setIframePreviewWhenReady(setIframePreview), 2000)
-    return
-  }
-
-  setIframePreview(iframePreview)
-}
+import type { ICssCustomPropertiesParams, PanelProps } from "./params";
 
 export const Panel: React.FC<PanelProps> = (props) => {
   const storage = useLocalStorage();
+  const [{ root }, setState] = useAddonState(ADDON_ID, {
+    root: null,
+    options: {},
+  });
+  const parameters: ICssCustomPropertiesParams = useParameter(PARAM_KEY, {});
+  const variables = useMemo(
+    () => getAllCSSVariables(root, parameters),
+    [root, parameters]
+  );
 
-  const paramData: ICssCustomPropertiesParams = useParameter(PARAM_KEY, {});
+  useChannel({
+    [EVENTS.CODE_UPDATE]: ({ root }) =>
+      setState((state) => ({ ...state, root })),
+  });
 
-  const [cssVars, setCssVars] = useState([]);
-  const [iframePreview, setIframePreview] = useState<HTMLIFrameElement>(null);
-
-  setTimeout(() => setIframePreviewWhenReady(setIframePreview), 2000)
-
-  useEffect(() => {
-    if (!iframePreview) return
-    const variables = getAllCSSVariables(iframePreview.contentWindow.document)
-    setCssVars(variables)
-
-    storage.setLocalStorage(ADDON_ID, {
-      initialValues: variables
-    })
-  }, [iframePreview])
+  storage.setLocalStorage(ADDON_ID, {
+    initialValues: variables,
+  });
 
   return (
     <AddonPanel {...props}>
       <PanelContent
-        baseProperties={cssVars}
-        propsConfig={paramData?.props ?? {}}
-        matchCategory={paramData?.matchCategory ?? {}}
-        hiddenProps={paramData?.hiddenProps ?? []}
+        baseProperties={variables}
+        propsConfig={parameters?.props ?? {}}
+        matchCategory={parameters?.matchCategory ?? {}}
+        filterProps={parameters?.filterProps ?? []}
+        hiddenProps={parameters?.hiddenProps ?? []}
       />
     </AddonPanel>
   );

@@ -1,12 +1,11 @@
 import { ADDON_ID } from "./constants"
-import { IItem } from "./get-all-css-variables"
-import { ICssCustomPropertiesParams } from "./params"
+import { IItem, ICssCustomPropertiesParams } from "./params"
 import { useLocalStorage } from "./use-local-storage"
 
 export const getIframeRoot = () => {
   const iframe = document.querySelector('iframe#storybook-preview-iframe') as HTMLIFrameElement
-  const root = iframe.contentWindow.document.querySelector('#root') as HTMLDivElement
-  return root
+  if (!iframe) return;
+  return iframe.contentWindow.document.querySelector('#root') as HTMLDivElement;
 }
 
 export const categoryMatcher = (
@@ -39,35 +38,37 @@ function sortByKey(record: Record<string, any>[], key: string) {
 export const tableArgsBuilder = (
   properties: IItem[],
   propsConfig: ICssCustomPropertiesParams['props'],
+  filterProps: ICssCustomPropertiesParams['filterProps'],
   hiddenProps: ICssCustomPropertiesParams['hiddenProps'],
   matchCategory: ICssCustomPropertiesParams['matchCategory'],
 ) => {
   return [...sortByKey(properties, 'key')].reduce((acc, prop) => {
     const config = propsConfig[prop.key]
 
-    if (hiddenProps.includes(prop.key)) return acc
+    if (!filterProps.some((f => prop.key.match(f)))) return acc
+    if (hiddenProps.some(h => prop.key.match(h))) return acc
 
     const storage = useLocalStorage();
     const initialValues = storage.getLocalStorage(ADDON_ID).initialValues
 
     acc[prop.name] = {
       category: '',
-        control: {
-          type: prop.type,
-          value: prop.value,
-          ...(config?.control ?? {})
+      control: {
+        type: prop.type,
+        value: prop.value,
+        ...(config?.control ?? {})
+      },
+      options: config?.options ?? undefined,
+      description: config?.description ?? undefined,
+      key: prop.key,
+      name: prop.key,
+      table: {
+        category: config?.category ?? categoryMatcher(matchCategory, prop.key),
+        defaultValue: {
+          summary: initialValues.find((o: any) => o.key === prop.key).value
         },
-        options: config?.options ?? undefined,
-        description: config?.description ?? undefined,
-        key: prop.key,
-        name: prop.key,
-        table: {
-          category: config?.category ?? categoryMatcher(matchCategory, prop.key),
-          defaultValue: {
-            summary: initialValues.find((o: any) => o.key === prop.key).value
-          },
-        },
-      }
+      },
+    }
 
     return acc
   }, {} as Record<string, any>)
